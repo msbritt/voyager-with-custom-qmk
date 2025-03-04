@@ -22,6 +22,11 @@ on:
           - planck_ez
           - planck_ez/glow
         default: voyager
+      target_branch:
+        description: "Target branch to merge into (from oryx)"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: write
@@ -54,12 +59,10 @@ jobs:
           
           echo firmware_version=${firmware_version} >> "$GITHUB_OUTPUT"
           echo change_description=${change_description} >> "$GITHUB_OUTPUT"
-
       - name: Unzip the source file
         run: |
           unzip -oj source.zip '*_source/*' -d ${{ github.event.inputs.layout_id }}
           rm source.zip
-
       - name: Commit and Push changes
         run: |
           git config --local user.name "github-actions"
@@ -67,14 +70,12 @@ jobs:
           git add .
           git commit -m "✨(oryx): ${{ steps.download-layout-source.outputs.change_description }}" || echo "No layout change"
           git push
-
       - name: Merge Oryx with custom QMK
         run: |
-          git fetch origin main
-          git checkout -B main origin/main
+          git fetch origin ${{ github.event.inputs.target_branch }}
+          git checkout -B ${{ github.event.inputs.target_branch }} origin/${{ github.event.inputs.target_branch }}
           git merge -Xignore-all-space oryx
           git push
-
       - name: Update QMK firmware submodule to latest version (${{ steps.download-layout-source.outputs.firmware_version }})
         run: |
           git submodule update --init --remote --depth=1
@@ -85,7 +86,6 @@ jobs:
           git add qmk_firmware
           git commit -m "✨(qmk): Update firmware" || echo "No QMK change"
           git push
-
       - name: Build qmk docker image
         run: docker build -t qmk .
 
@@ -115,30 +115,8 @@ jobs:
           normalized_layout_geometry="$(echo "${{ github.event.inputs.layout_geometry }}" | sed 's/\//_/g')"
           echo built_layout_file=$(find ./qmk_firmware -maxdepth 1 -type f -regex ".*${normalized_layout_geometry}.*\.\(bin\|hex\)$") >> "$GITHUB_OUTPUT"
           echo normalized_layout_geometry=${normalized_layout_geometry} >> "$GITHUB_OUTPUT"
-
-      - name: Rename layout file with date suffix
-        id: rename_layout
-        run: |
-          # Get current date in YYYYMMDD format
-          date_suffix=$(date +%Y%m%d)
-          artifact_file="${{ steps.build-layout.outputs.built_layout_file }}"
-          
-          # Extract file components
-          extension="${artifact_file##*.}"
-          base="${artifact_file%.*}"
-          
-          # Form new name by appending _YYYYMMDD before the extension
-          new_name="${base}_${date_suffix}.${extension}"
-          
-          # Rename the file
-          mv "${artifact_file}" "${new_name}"
-          
-          # Export the new file name and date as outputs
-          echo "new_built_layout_file=${new_name}" >> "$GITHUB_OUTPUT"
-          echo "new_date=${date_suffix}" >> "$GITHUB_OUTPUT"
-
       - name: Upload layout
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build-layout.outputs.normalized_layout_geometry }}_${{ github.event.inputs.layout_id }}_${{ steps.rename_layout.outputs.new_date }}
-          path: ${{ steps.rename_layout.outputs.new_built_layout_file }}
+          name: ${{ steps.build-layout.outputs.normalized_layout_geometry }}_${{ github.event.inputs.layout_id }}
+          path: ${{ steps.build-layout.outputs.built_layout_file }}
