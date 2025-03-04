@@ -115,8 +115,30 @@ jobs:
           normalized_layout_geometry="$(echo "${{ github.event.inputs.layout_geometry }}" | sed 's/\//_/g')"
           echo built_layout_file=$(find ./qmk_firmware -maxdepth 1 -type f -regex ".*${normalized_layout_geometry}.*\.\(bin\|hex\)$") >> "$GITHUB_OUTPUT"
           echo normalized_layout_geometry=${normalized_layout_geometry} >> "$GITHUB_OUTPUT"
+          
+      - name: Rename layout file with date suffix
+        id: rename_layout
+        run: |
+          # Get current date in YYYYMMDD format
+          date_suffix=$(date +%Y%m%d)
+          artifact_file="${{ steps.build-layout.outputs.built_layout_file }}"
+          
+          # Extract file components
+          extension="${artifact_file##*.}"
+          base="${artifact_file%.*}"
+          
+          # Form new name by appending _YYYYMMDD before the extension
+          new_name="${base}_${date_suffix}.${extension}"
+          
+          # Rename the file
+          mv "${artifact_file}" "${new_name}"
+          
+          # Export the new file name and date as outputs
+          echo "new_built_layout_file=${new_name}" >> "$GITHUB_OUTPUT"
+          echo "new_date=${date_suffix}" >> "$GITHUB_OUTPUT"
+          
       - name: Upload layout
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build-layout.outputs.normalized_layout_geometry }}_${{ github.event.inputs.layout_id }}
+          name: ${{ steps.build-layout.outputs.normalized_layout_geometry }}_${{ github.event.inputs.layout_id }}_${{ steps.rename_layout.outputs.new_date }}
           path: ${{ steps.build-layout.outputs.built_layout_file }}
